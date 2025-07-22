@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "337750357503",
+    "project_id": "lvtn-9f328",
+    "storage_bucket": "lvtn-9f328.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:337750357503:android:d097860dc806e5df7c23ca",
+        "android_client_info": {
+          "package_name": "com.lvtn.colector"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbNV8A04Rf3_7n9-Tet1KcODXl3tWift4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

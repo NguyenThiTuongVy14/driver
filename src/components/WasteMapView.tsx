@@ -1,149 +1,167 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, Animated, StyleSheet } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { Platform, Text, Animated, Image } from 'react-native';
+import MapView, {
+  Marker,
+  Polyline,
+  PROVIDER_GOOGLE,
+  Callout,
+} from 'react-native-maps';
 
 interface WastePoint {
   id: number;
   latitude: number;
   longitude: number;
-  status: 'completed' | 'ready' | 'pending';
+  status: string;
   address: string;
-  weight: string;
-  time: string;
+  shift: string;
 }
 
-interface RouteCoordinate {
+interface ExtraMarker {
+  id: string;
   latitude: number;
   longitude: number;
+  title: string;
+  iconColor?: string;
 }
 
 interface MapViewProps {
   wastePoints: WastePoint[];
-  routeCoordinates: RouteCoordinate[];
   animatedValue: Animated.Value;
   handlePointPress: (point: WastePoint) => void;
-  getPointColor: (status: 'ready' | 'completed' | 'pending') => string;
+  getPointColor: (status: string) => string;
   currentLocation?: { latitude: number; longitude: number };
-  selectedPoint?: WastePoint | null;
+  selectedPoint: WastePoint | null;
+  routeCoordinates: { latitude: number; longitude: number }[];
+  currentLocationIcon: string;
+  extraMarkers?: ExtraMarker[]; // 👈 THÊM props mới
 }
 
 const WasteMapView: React.FC<MapViewProps> = ({
   wastePoints,
-  routeCoordinates,
   animatedValue,
   handlePointPress,
   getPointColor,
   currentLocation,
   selectedPoint,
+  routeCoordinates,
+  currentLocationIcon,
+  extraMarkers = [], // 👈 Default rỗng nếu không truyền
 }) => {
-  const mapRef = useRef<MapView | null>(null);
-  const defaultRegion = {
-    latitude: 10.8231,
-    longitude: 106.6297,
-    latitudeDelta: 0.09,
-    longitudeDelta: 0.04,
-  };
+  const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
-    if (wastePoints.length > 0 && mapRef.current) {
-      const coords = wastePoints.map(p => ({
-        latitude: p.latitude,
-        longitude: p.longitude,
-      }));
-      if (currentLocation) coords.push(currentLocation);
-      mapRef.current.fitToCoordinates(coords, {
-        edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-        animated: true,
-      });
-    }
-  }, [wastePoints, currentLocation]);
+    if (mapRef.current) {
+      let targetLocation = null;
+      let delta = 0.05;
 
-  useEffect(() => {
-    if (selectedPoint && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
+      if (selectedPoint) {
+        targetLocation = {
           latitude: selectedPoint.latitude,
           longitude: selectedPoint.longitude,
-          latitudeDelta: 0.005,
-          longitudeDelta: 0.005,
-        },
-        500
-      );
+        };
+        delta = 0.01;
+      } else if (currentLocation) {
+        targetLocation = currentLocation;
+        delta = 0.05;
+      }
+
+      if (targetLocation) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: targetLocation.latitude,
+            longitude: targetLocation.longitude,
+            latitudeDelta: delta,
+            longitudeDelta: delta,
+          },
+          1000
+        );
+      }
     }
-  }, [selectedPoint]);
+  }, [selectedPoint, currentLocation]);
 
   return (
     <MapView
       ref={mapRef}
-      provider={PROVIDER_GOOGLE}
+      provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
       style={{ flex: 1 }}
-      initialRegion={defaultRegion}
+      initialRegion={{
+        latitude: currentLocation?.latitude || 10.762622,
+        longitude: currentLocation?.longitude || 106.660172,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      }}
     >
-      {routeCoordinates.length > 0 && (
+      {/* 🔵 Vẽ tuyến đường nếu có */}
+      {selectedPoint && routeCoordinates.length > 0 && (
         <Polyline
           coordinates={routeCoordinates}
           strokeColor="#007AFF"
-          strokeWidth={3}
-          lineDashPattern={[5, 5]}
+          strokeWidth={4}
         />
       )}
 
-      {wastePoints.map(p => (
+      {/* 🗑️ Điểm thu gom */}
+      {wastePoints.map((p) => (
         <Marker
           key={p.id}
           coordinate={{ latitude: p.latitude, longitude: p.longitude }}
+          pinColor={getPointColor(p.status)}
           onPress={() => handlePointPress(p)}
         >
-          <View
-            style={{
-              backgroundColor: getPointColor(p.status),
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 6,
-            }}
-          >
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>#{p.id}</Text>
-          </View>
+          <Callout>
+            <Text style={{ fontWeight: 'bold' }}>#{p.id}</Text>
+            <Text>{p.address}</Text>
+            <Text style={{ fontSize: 12, color: '#666' }}>
+              Trạng thái: {p.status}
+            </Text>
+          </Callout>
         </Marker>
       ))}
 
+      {/* 🧭 Vị trí hiện tại */}
       {currentLocation && (
-        <Marker coordinate={currentLocation}>
-          <Animated.View
+        <Marker
+          coordinate={currentLocation}
+          anchor={{ x: 0.5, y: 0.5 }}
+          flat={true}
+        >
+          <Image
+            source={{ uri: currentLocationIcon }}
             style={{
-              transform: [
-                {
-                  scale: animatedValue.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [1, 1.4],
-                  }),
-                },
-              ],
+              width: 36,
+              height: 36,
+              borderRadius: 20,
+              borderWidth: 2,
+              borderColor: '#000000',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 3,
+              padding: 0,
+              zIndex: 100,
             }}
-          >
-            <View style={styles.currentMarker}>
-              <Text style={styles.currentText}>Tôi</Text>
-            </View>
-          </Animated.View>
+            resizeMode="cover"
+            onError={(e) =>
+              console.error('Lỗi tải ảnh vị trí hiện tại:', e.nativeEvent.error)
+            }
+          />
         </Marker>
       )}
+
+      {/* 🟢🔴 Điểm bắt đầu / kết thúc thêm từ ngoài */}
+      {extraMarkers.map((marker) => (
+        <Marker
+          key={marker.id}
+          coordinate={{
+            latitude: marker.latitude,
+            longitude: marker.longitude,
+          }}
+          pinColor={marker.iconColor || 'gray'}
+          title={marker.title}
+        />
+      ))}
     </MapView>
   );
 };
-
-const styles = StyleSheet.create({
-  currentMarker: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  currentText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-});
 
 export default WasteMapView;

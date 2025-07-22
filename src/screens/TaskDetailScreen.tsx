@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,43 +12,39 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { updateTaskStatus, getStatus } from '../services/task';
+import { updateTaskStatus, getStatus } from '../services/task.service';
 import { connectWebSocket, disconnectWebSocket } from '../socket/websocket';
-import {useEffect } from 'react';
 
 export default function TaskDetailScreen() {
-  useEffect(() => {
-  connectWebSocket(`/topic/job-status-${task.position.id}`, (msg) => {
-    console.log('[WS] Nhận dữ liệu:', msg.body);
-  });
-
-  return () => {
-    disconnectWebSocket();
-  };
-}, []);
   const route = useRoute();
   const navigation = useNavigation();
   const [loading, setLoading] = useState(false);
 
+  // Updated interface to match the new data structure
   const { task } = route.params as {
     task: {
       id: number;
+      latitude: number;
+      longitude: number;
       status: string;
-      rotationDate: string;
-      shift: {
-        name: string;
-      };
-      position: {
-        name: string;
-        address: string;
-        lat: string;
-        lng: string;
-      };
+      address: string;
+      name: string;
+      image?: string;
     };
   };
 
-  const lat = parseFloat(task.position.lat);
-  const lng = parseFloat(task.position.lng);
+  useEffect(() => {
+    // Connect to WebSocket for real-time updates
+    connectWebSocket(`/topic/job-status-${task.id}`, (msg) => {
+      console.log('[WS] Nhận dữ liệu:', msg.body);
+      // You can update the task status here if needed
+    });
+
+    return () => {
+      disconnectWebSocket();
+    };
+  }, [task.id]);
+
   const statusInfo = getStatus(task.status);
 
   const handleComplete = async () => {
@@ -65,13 +61,21 @@ export default function TaskDetailScreen() {
     }
   };
 
+  // Get current date for display
+  const getCurrentDate = () => {
+    return new Date().toLocaleDateString('vi-VN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
 
   return (
     <View style={styles.wrapper}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <Text style={styles.jobName} numberOfLines={2}>
-            Công việc #{task.id}
+            {task.name}
           </Text>
           <View
             style={[
@@ -88,50 +92,67 @@ export default function TaskDetailScreen() {
           </View>
         </View>
 
-
         <Animated.View entering={FadeInDown.delay(100).duration(400)} style={styles.infoBox}>
           <View style={styles.infoItem}>
+            <Icon name="business" size={20} color="#1565C0" style={styles.icon} />
+            <Text style={styles.label}>ID:</Text>
+            <Text style={styles.value}>#{task.id}</Text>
+          </View>
+
+          <View style={styles.infoItem}>
             <Icon name="place" size={20} color="#1565C0" style={styles.icon} />
-            <Text style={styles.label}>Vị trí:</Text>
-            <Text style={styles.value}>{task.position.name}</Text>
+            <Text style={styles.label}>Tên điểm:</Text>
+            <Text style={styles.value}>{task.name}</Text>
           </View>
 
           <View style={styles.infoItem}>
             <Icon name="home-work" size={20} color="#1565C0" style={styles.icon} />
             <Text style={styles.label}>Địa chỉ:</Text>
-            <Text style={styles.value}>{task.position.address}</Text>
+            <Text style={styles.value}>{task.address}</Text>
+          </View>
+
+          <View style={styles.infoItem}>
+            <Icon name="my-location" size={20} color="#1565C0" style={styles.icon} />
+            <Text style={styles.label}>Tọa độ:</Text>
+            <Text style={styles.value}>
+              {task.latitude.toFixed(6)}, {task.longitude.toFixed(6)}
+            </Text>
           </View>
 
           <View style={styles.infoItem}>
             <Icon name="event" size={20} color="#1565C0" style={styles.icon} />
             <Text style={styles.label}>Ngày:</Text>
-            <Text style={styles.value}>{task.rotationDate}</Text>
+            <Text style={styles.value}>{getCurrentDate()}</Text>
           </View>
 
           <View style={styles.infoItem}>
-            <Icon name="schedule" size={20} color="#1565C0" style={styles.icon} />
-            <Text style={styles.label}>Ca làm:</Text>
-            <Text style={styles.value}>{task.shift.name}</Text>
+            <Icon name="info" size={20} color="#1565C0" style={styles.icon} />
+            <Text style={styles.label}>Trạng thái:</Text>
+            <Text style={[styles.value, { color: statusInfo.color }]}>
+              {statusInfo.label}
+            </Text>
           </View>
         </Animated.View>
-        
 
         <Animated.View entering={FadeInDown.delay(200).duration(400)} style={styles.mapContainer}>
           <MapView
             style={styles.map}
             initialRegion={{
-              latitude: lat,
-              longitude: lng,
+              latitude: task.latitude,
+              longitude: task.longitude,
               latitudeDelta: 0.008,
               longitudeDelta: 0.008,
             }}
-            showsUserLocation={false}
+            showsUserLocation={true}
             loadingEnabled={true}
           >
             <Marker
-              coordinate={{ latitude: lat, longitude: lng }}
-              title={task.position.name}
-              description={task.position.address}
+              coordinate={{ 
+                latitude: task.latitude, 
+                longitude: task.longitude 
+              }}
+              title={task.name}
+              description={task.address}
               pinColor="#0D47A1"
             />
           </MapView>
@@ -143,22 +164,30 @@ export default function TaskDetailScreen() {
         <Button
           mode="contained"
           loading={loading}
-          disabled={loading || task.status !== 'ASSIGNED'}
+          disabled={loading || (task.status !== 'ASSIGNED' && task.status !== 'ACTIVE')}
           onPress={() => handleComplete()}
-          style={styles.floatingButton}
+          style={[
+            styles.floatingButton,
+            {
+              backgroundColor: 
+                task.status === 'COMPLETED' ? '#81C784' : 
+                (task.status === 'ASSIGNED' || task.status === 'ACTIVE') ? '#4CAF50' : '#BDBDBD'
+            }
+          ]}
           labelStyle={{ fontWeight: 'bold', fontSize: 16 }}
-          icon="check"
+          icon={task.status === 'COMPLETED' ? 'check-circle' : 'check'}
         >
-          Hoàn thành công việc
+          {task.status === 'COMPLETED' ? 'Đã hoàn thành' : 'Hoàn thành công việc'}
         </Button>
       </View>
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
-    backgroundColor: '#E8F5E9', // nền dịu hơn
+    backgroundColor: '#E8F5E9',
     position: 'relative',
   },
   container: {
@@ -166,9 +195,10 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingBottom: 120, // Extra padding for floating button
   },
 
-  // Header hiển thị Công việc + Trạng thái
+  // Header hiển thị tên điểm + Trạng thái
   headerRow: {
     marginTop: 20,
     alignItems: 'center',
@@ -181,6 +211,7 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     flexShrink: 1,
     flex: 1,
+    textAlign: 'center',
   },
   statusBadge: {
     borderWidth: 1,
@@ -205,7 +236,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 24,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
@@ -219,19 +250,21 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   icon: {
-    marginRight: 6,
+    marginRight: 8,
   },
   label: {
     fontSize: 15,
     fontWeight: '600',
     color: '#607D8B',
-    marginRight: 4,
+    marginRight: 8,
+    minWidth: 80,
   },
   value: {
     fontSize: 16,
     fontWeight: '700',
     color: '#263238',
     flexShrink: 1,
+    flex: 1,
   },
 
   // Bản đồ
@@ -258,11 +291,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   floatingButton: {
-
-    backgroundColor: '#81C784',
     borderRadius: 16,
     paddingVertical: 12,
     elevation: 6,
   },
 });
-
