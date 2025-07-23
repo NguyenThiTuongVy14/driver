@@ -10,7 +10,7 @@ import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import AboutAppScreen from '../screens/AboutAppScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
-// import QRScannerScreen from '../screens/RegisterScreen';
+import QRScannerScreen from '../screens/RegisterScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,7 +24,7 @@ export default function AppNavigator() {
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ headerShown: false }} />
       <Stack.Screen name="AboutApp" component={AboutAppScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: 'Quên mật khẩu', }} />
-      {/* <Stack.Screen name="RegisterDriver" component={QRScannerScreen} options={{ title: 'Quên mật khẩu', }} /> */}
+      <Stack.Screen name="RegisterDriver" component={QRScannerScreen} options={{ title: 'Quên mật khẩu', }} />
 
       <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
 
