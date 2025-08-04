@@ -1,11 +1,11 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const url = 'http://192.168.1.44';
+const url = 'http://192.168.61.221';
 const port = 8080;
 const axiosIntance = axios.create({
-  baseURL: 'https://backend-springboot-latest.onrender.com/api',
-  // baseURL : `${url}:${port}/api`,
+  // baseURL: 'https://backend-springboot-latest.onrender.com/api',
+  baseURL : `${url}:${port}/api`,
   timeout: 50000,
   headers: {
     'Content-Type': 'application/json',

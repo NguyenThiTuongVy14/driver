@@ -243,7 +243,7 @@ export default function LoginScreen() {
                   <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.forgotPassword}
-                  onPress={() => navigation.navigate('RegisterDriver')}>
+                  onPress={() => navigation.navigate('QRScanner')}>
                   <Text style={styles.forgotPasswordText}>Đăng ký làm tài xế</Text>
                 </TouchableOpacity>
               </View>

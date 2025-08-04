@@ -24,7 +24,7 @@ export default function AppNavigator() {
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ headerShown: false }} />
       <Stack.Screen name="AboutApp" component={AboutAppScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: 'Quên mật khẩu', }} />
-      <Stack.Screen name="RegisterDriver" component={QRScannerScreen} options={{ title: 'Quên mật khẩu', }} />
+      <Stack.Screen name="QRScanner" component={QRScannerScreen} />
 
       <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
 

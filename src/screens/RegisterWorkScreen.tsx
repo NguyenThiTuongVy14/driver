@@ -3,124 +3,77 @@ import {
   View,
   Text,
   StyleSheet,
-  Switch,
   Alert,
   ActivityIndicator,
   ScrollView,
   Platform,
   StatusBar,
   TouchableOpacity,
-  Animated,
   Dimensions,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { getShifts, registers } from '../services/task.service';
+import { registers } from '../services/task.service';
 
 const { width } = Dimensions.get('window');
 
 export default function RegisterWorkScreen() {
-  const [formList, setFormList] = useState([
-    {
-      id: Date.now(),
-      date: new Date(),
-      showPicker: false,
-      shifts: [],
-      animatedValue: new Animated.Value(0),
-    },
-  ]);
-  const [loadingShifts, setLoadingShifts] = useState(true);
+  const [selectedDates, setSelectedDates] = useState(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [allShifts, setAllShifts] = useState([]);
+  const [currentWeek, setCurrentWeek] = useState(() => {
+    // Khởi tạo với ngày hiện tại theo timezone VN
+    const now = new Date();
+    const vnTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    return new Date(vnTime.getFullYear(), vnTime.getMonth(), vnTime.getDate());
+  });
 
+  // Debug: Log ngày hiện tại để kiểm tra
   useEffect(() => {
-    const fetchShifts = async () => {
-      try {
-        setLoadingShifts(true);
-        const response = await getShifts();
-        setAllShifts(response);
-        setFormList(formList =>
-          formList.map(form => ({
-            ...form,
-            shifts: response.map(shift => ({ ...shift, enabled: false })),
-          }))
-        );
-      } catch (err) {
-        console.error(err);
-        Alert.alert('Lỗi', 'Không thể tải danh sách ca làm việc.');
-      } finally {
-        setLoadingShifts(false);
-      }
-    };
-
-    fetchShifts();
+    const today = getTodayVN();
+    console.log('Today VN date:', today.toString());
+    console.log('Today VN local date:', today.toLocaleDateString('vi-VN'));
+    console.log('Today VN getDate():', today.getDate());
+    console.log('Today VN getMonth():', today.getMonth() + 1); // +1 vì getMonth() trả về 0-11
+    console.log('Today VN getFullYear():', today.getFullYear());
   }, []);
 
-  const addForm = () => {
-    const newForm = {
-      id: Date.now(),
-      date: new Date(),
-      showPicker: false,
-      shifts: allShifts.map(shift => ({ ...shift, enabled: false })),
-      animatedValue: new Animated.Value(0),
-    };
-
-    setFormList(prev => [...prev, newForm]);
-
-    // Animate new form appearance
-    Animated.spring(newForm.animatedValue, {
-      toValue: 1,
-      tension: 100,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
+  // Lấy ngày hiện tại theo timezone Việt Nam
+  const getTodayVN = () => {
+    const now = new Date();
+    // Chuyển về timezone Việt Nam (UTC+7)
+    const vnTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    return new Date(vnTime.getFullYear(), vnTime.getMonth(), vnTime.getDate());
   };
 
-  const updateDate = (formId, newDate) => {
-    setFormList(prev =>
-      prev.map(form =>
-        form.id === formId ? { ...form, date: newDate, showPicker: false } : form
-      )
-    );
+  // Lấy ngày đầu tuần (Thứ 2)
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
   };
 
-  const toggleShift = (formId, shiftId) => {
-    setFormList(prev =>
-      prev.map(form =>
-        form.id === formId
-          ? {
-            ...form,
-            shifts: form.shifts.map(shift =>
-              shift.id === shiftId ? { ...shift, enabled: !shift.enabled } : shift
-            ),
-          }
-          : form
-      )
-    );
-  };
-
-  const toggleDatePicker = (formId) => {
-    setFormList(prev =>
-      prev.map(form =>
-        form.id === formId ? { ...form, showPicker: !form.showPicker } : form
-      )
-    );
-  };
-
-  const removeForm = (formId) => {
-    const formToRemove = formList.find(form => form.id === formId);
-
-    if (formToRemove) {
-      Animated.timing(formToRemove.animatedValue, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        setFormList(prev => prev.filter(form => form.id !== formId));
-      });
+  // Tạo array 7 ngày trong tuần
+  const getWeekDays = (startDate) => {
+    const days = [];
+    const start = new Date(startDate);
+    
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(start);
+      day.setDate(start.getDate() + i);
+      days.push(day);
     }
+    return days;
   };
+
+  const weekDays = getWeekDays(getStartOfWeek(currentWeek));
 
   const formatDate = (date) => {
+    return date.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+    });
+  };
+
+  const formatFullDate = (date) => {
     return date.toLocaleDateString('vi-VN', {
       weekday: 'long',
       year: 'numeric',
@@ -129,35 +82,106 @@ export default function RegisterWorkScreen() {
     });
   };
 
+  const getDayName = (date) => {
+    const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    return days[date.getDay()];
+  };
+
+  const isToday = (date) => {
+    const today = getTodayVN();
+    const checkDate = new Date(date);
+    
+    return today.getFullYear() === checkDate.getFullYear() &&
+           today.getMonth() === checkDate.getMonth() &&
+           today.getDate() === checkDate.getDate();
+  };
+
+  const isPastDate = (date) => {
+    const today = getTodayVN();
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+    
+    return checkDate < today;
+  };
+
+  const isCurrentWeek = () => {
+    const today = getTodayVN();
+    const startOfCurrentWeek = getStartOfWeek(today);
+    const startOfDisplayWeek = getStartOfWeek(currentWeek);
+    return startOfCurrentWeek.getTime() === startOfDisplayWeek.getTime();
+  };
+
+  const isNextWeek = () => {
+    const today = getTodayVN();
+    const startOfNextWeek = getStartOfWeek(today);
+    startOfNextWeek.setDate(startOfNextWeek.getDate() + 7);
+    const startOfDisplayWeek = getStartOfWeek(currentWeek);
+    return startOfNextWeek.getTime() === startOfDisplayWeek.getTime();
+  };
+
+  const canSelectDates = () => {
+    const today = new Date();
+    return isNextWeek() 
+    // && today.getDay() == 0;
+  };
+
+  const toggleDate = (date) => {
+    if (!canSelectDates()) return;
+    
+    // Chỉ disable ngày quá khứ trong tuần hiện tại
+    // Nếu là tuần sau thì cho phép chọn tất cả
+    if (isCurrentWeek() && isPastDate(date)) return;
+    
+    const dateString = date.toISOString().split('T')[0];
+    const newSelectedDates = new Set(selectedDates);
+    
+    if (newSelectedDates.has(dateString)) {
+      newSelectedDates.delete(dateString);
+    } else {
+      newSelectedDates.add(dateString);
+    }
+    
+    setSelectedDates(newSelectedDates);
+  };
+
+  const isDateSelected = (date) => {
+    const dateString = date.toISOString().split('T')[0];
+    return selectedDates.has(dateString);
+  };
+
+  const goToPreviousWeek = () => {
+    const prevWeek = new Date(currentWeek);
+    prevWeek.setDate(currentWeek.getDate() - 7);
+    setCurrentWeek(prevWeek);
+  };
+
+  const goToNextWeek = () => {
+    const nextWeek = new Date(currentWeek);
+    nextWeek.setDate(currentWeek.getDate() + 7);
+    setCurrentWeek(nextWeek);
+  };
+
+  const goToCurrentWeek = () => {
+    setCurrentWeek(getTodayVN());
+  };
+
   const handleSubmit = async () => {
-    const payload = [];
-
-    for (let form of formList) {
-      const selectedShiftIds = form.shifts.filter(s => s.enabled).map(s => s.id);
-      if (selectedShiftIds.length === 0) {
-        Alert.alert('Thiếu thông tin', 'Mỗi ngày phải chọn ít nhất một ca.');
-        return;
-      }
-
-      payload.push({
-        rotationDate: form.date.toISOString().substring(0, 10),
-        shiftId: selectedShiftIds,
-      });
+    if (selectedDates.size === 0) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng chọn ít nhất một ngày.');
+      return;
     }
 
+    // Thay đổi payload format thành dates: []
+    const payload = {
+      dates: Array.from(selectedDates).sort()
+    };
+    
+    
     try {
       setIsSubmitting(true);
       const response = await registers(payload);
       Alert.alert('Thành công', response.message || 'Đăng ký thành công!');
-      setFormList([
-        {
-          id: Date.now(),
-          date: new Date(),
-          showPicker: false,
-          shifts: allShifts.map(shift => ({ ...shift, enabled: false })),
-          animatedValue: new Animated.Value(1),
-        },
-      ]);
+      setSelectedDates(new Set());
     } catch (e: any) {
       console.error(e);
       Alert.alert('Thất bại', e.message || 'Không thể gửi dữ liệu.');
@@ -166,29 +190,27 @@ export default function RegisterWorkScreen() {
     }
   };
 
-  const getSelectedShiftsCount = (form) => {
-    return form.shifts.filter(shift => shift.enabled).length;
+  const getWeekRange = () => {
+    const start = weekDays[0];
+    const end = weekDays[6];
+    const year = start.getFullYear();
+    return `${formatDate(start)} - ${formatDate(end)} / ${year}`;
   };
 
-  useEffect(() => {
-    if (formList.length > 0 && formList[0].animatedValue) {
-      Animated.spring(formList[0].animatedValue, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [allShifts]);
+  const getWeekTitle = () => {
+    if (isCurrentWeek()) return 'Tuần này';
+    if (isNextWeek()) return 'Tuần sau';
+    return 'Tuần khác';
+  };
 
   return (
     <View style={styles.outerContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#667eea" />
 
-      {/* Header với gradient */}
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Đăng ký ca làm việc</Text>
-        <Text style={styles.headerSubtitle}>Chọn ngày và ca làm việc của bạn</Text>
+        <Text style={styles.headerTitle}>Đăng ký ngày làm việc</Text>
+        <Text style={styles.headerSubtitle}>Chọn ngày làm việc trong tuần</Text>
       </View>
 
       <ScrollView
@@ -196,151 +218,132 @@ export default function RegisterWorkScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContentContainer}
       >
-        {formList.map((form, index) => (
-          <Animated.View
-            key={form.id}
-            style={[
-              styles.sectionCard,
-              {
-                opacity: form.animatedValue || 1,
-                transform: [
-                  {
-                    translateY: form.animatedValue
-                      ? form.animatedValue.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [50, 0],
-                      })
-                      : 0,
-                  },
-                  {
-                    scale: form.animatedValue
-                      ? form.animatedValue.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.9, 1],
-                      })
-                      : 1,
-                  },
-                ],
-              },
-            ]}
+        {/* Week Navigation */}
+        <View style={styles.weekNavigation}>
+          <TouchableOpacity
+            onPress={goToPreviousWeek}
+            style={styles.navButton}
+            activeOpacity={0.7}
           >
-            {/* Card Header */}
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleContainer}>
-                <Text style={styles.cardTitle}>Ngày {index + 1}</Text>
-                {getSelectedShiftsCount(form) > 0 && (
-                  <View style={styles.selectedBadge}>
-                    <Text style={styles.selectedBadgeText}>
-                      {getSelectedShiftsCount(form)} ca
-                    </Text>
-                  </View>
-                )}
-              </View>
+            <Text style={styles.navButtonText}>‹</Text>
+          </TouchableOpacity>
 
-              {formList.length > 1 && (
-                <TouchableOpacity
-                  onPress={() => removeForm(form.id)}
-                  style={styles.removeButton}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.removeIcon}>×</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Date Picker */}
-            <TouchableOpacity
-              onPress={() => toggleDatePicker(form.id)}
-              style={styles.dateButton}
-              activeOpacity={0.8}
-            >
-              <View style={styles.dateButtonContent}>
-                <Text style={styles.dateIcon}>📅</Text>
-                <View style={styles.dateTextContainer}>
-                  <Text style={styles.dateLabel}>Ngày làm việc</Text>
-                  <Text style={styles.dateButtonText}>{formatDate(form.date)}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            {form.showPicker && (
-              <View style={styles.datePickerContainer}>
-                <DateTimePicker
-                  value={form.date}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event, value) => updateDate(form.id, value || form.date)}
-                />
-              </View>
-            )}
-
-            {/* Shifts Section */}
-            <View style={styles.shiftsContainer}>
-              <Text style={styles.shiftsTitle}>Chọn ca làm việc</Text>
-
-              {loadingShifts ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#667eea" />
-                  <Text style={styles.loadingText}>Đang tải ca làm việc...</Text>
-                </View>
-              ) : (
-                <View style={styles.shiftsGrid}>
-                  {form.shifts.map(shift => (
-                    <TouchableOpacity
-                      key={shift.id}
-                      style={[
-                        styles.shiftCard,
-                        shift.enabled && styles.shiftCardSelected
-                      ]}
-                      onPress={() => toggleShift(form.id, shift.id)}
-                      activeOpacity={0.8}
-                    >
-                      <View style={styles.shiftCardContent}>
-                        <Text style={[
-                          styles.shiftName,
-                          shift.enabled && styles.shiftNameSelected
-                        ]}>
-                          {shift.name}
-                        </Text>
-                        <Text style={[
-                          styles.shiftTime,
-                          shift.enabled && styles.shiftTimeSelected
-                        ]}>
-                          {shift.startTime} - {shift.endTime}
-                        </Text>
-                      </View>
-                      <View style={[
-                        styles.shiftCheckbox,
-                        shift.enabled && styles.shiftCheckboxSelected
-                      ]}>
-                        {shift.enabled && <Text style={styles.checkmark}>✓</Text>}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-          </Animated.View>
-        ))}
-
-        {/* Add Button */}
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={addForm}
-          activeOpacity={0.8}
-        >
-          <View style={styles.addButtonContent}>
-            <Text style={styles.addIcon}>+</Text>
-            <Text style={styles.addButtonText}>Thêm ngày mới</Text>
+          <View style={styles.weekInfo}>
+            <Text style={styles.weekTitle}>{getWeekTitle()}</Text>
+            <Text style={styles.weekRange}>{getWeekRange()}</Text>
           </View>
-        </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={goToNextWeek}
+            style={styles.navButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.navButtonText}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Current Week Button - chỉ hiện khi không phải tuần hiện tại */}
+        {!isCurrentWeek() && (
+          <TouchableOpacity
+            onPress={goToCurrentWeek}
+            style={styles.currentWeekButton}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.currentWeekButtonText}>Về tuần hiện tại</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Calendar Grid */}
+        <View style={styles.calendarContainer}>
+          <Text style={styles.calendarTitle}>
+            {canSelectDates() ? 'Chọn ngày làm việc' : 'Chỉ được chọn trong tuần này hoặc tuần sau'}
+          </Text>
+          
+          <View style={styles.weekGrid}>
+            {weekDays.map((date, index) => {
+              const selected = isDateSelected(date);
+              const today = isToday(date);
+              
+              // Logic disable: chỉ disable nếu không thể chọn tuần HOẶC là ngày quá khứ trong tuần hiện tại
+              const disabled = !canSelectDates() || (isCurrentWeek() && isPastDate(date));
+              
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.dayButton,
+                    selected && styles.dayButtonSelected,
+                    today && styles.dayButtonToday,
+                    disabled && styles.dayButtonPast,
+                  ]}
+                  onPress={() => toggleDate(date)}
+                  disabled={disabled}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[
+                    styles.dayName,
+                    selected && styles.dayNameSelected,
+                    today && styles.dayNameToday,
+                    disabled && styles.dayNamePast,
+                  ]}>
+                    {getDayName(date)}
+                  </Text>
+                  <Text style={[
+                    styles.dayNumber,
+                    selected && styles.dayNumberSelected,
+                    today && styles.dayNumberToday,
+                    disabled && styles.dayNumberPast,
+                  ]}>
+                    {date.getDate()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Selected Dates List */}
+        {selectedDates.size > 0 && (
+          <View style={styles.selectedContainer}>
+            <Text style={styles.selectedTitle}>
+              Ngày đã chọn ({selectedDates.size})
+            </Text>
+            <View style={styles.selectedList}>
+              {Array.from(selectedDates).sort().map(dateString => {
+                const date = new Date(dateString + 'T00:00:00');
+                return (
+                  <View key={dateString} style={styles.selectedItem}>
+                    <View style={styles.selectedItemContent}>
+                      <Text style={styles.selectedItemText}>
+                        {formatFullDate(date)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const newSelected = new Set(selectedDates);
+                        newSelected.delete(dateString);
+                        setSelectedDates(newSelected);
+                      }}
+                      style={styles.removeSelectedButton}
+                    >
+                      <Text style={styles.removeSelectedText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Submit Button */}
         <View style={styles.submitContainer}>
           <TouchableOpacity
-            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+            style={[
+              styles.submitButton,
+              (isSubmitting || selectedDates.size === 0) && styles.submitButtonDisabled
+            ]}
             onPress={handleSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || selectedDates.size === 0}
             activeOpacity={0.8}
           >
             {isSubmitting ? (
@@ -349,7 +352,9 @@ export default function RegisterWorkScreen() {
                 <Text style={styles.submitButtonText}>Đang xử lý...</Text>
               </View>
             ) : (
-              <Text style={styles.submitButtonText}> Đăng ký ngay</Text>
+              <Text style={styles.submitButtonText}>
+                Đăng ký {selectedDates.size > 0 ? `(${selectedDates.size} ngày)` : ''}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -395,7 +400,60 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 80,
   },
-  sectionCard: {
+  weekNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  navButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navButtonText: {
+    fontSize: 20,
+    color: '#667eea',
+    fontWeight: 'bold',
+  },
+  weekInfo: {
+    alignItems: 'center',
+  },
+  weekTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1a202c',
+    marginBottom: 4,
+  },
+  weekRange: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  currentWeekButton: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  currentWeekButtonText: {
+    color: '#667eea',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  calendarContainer: {
     backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 20,
@@ -405,180 +463,120 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  cardTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardTitle: {
+  calendarTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1a202c',
-    marginRight: 10,
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  selectedBadge: {
-    backgroundColor: '#667eea',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  weekGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dayButton: {
+    width: (width - 80) / 7,
+    aspectRatio: 1,
     borderRadius: 12,
-  },
-  selectedBadgeText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  removeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#fee2e2',
+    backgroundColor: '#f8fafc',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  removeIcon: {
-    color: '#dc2626',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  dateButton: {
-    backgroundColor: '#f7fafc',
-    borderRadius: 15,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#e2e8f0',
   },
-  dateButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  dayButtonSelected: {
+    backgroundColor: '#667eea',
+    borderColor: '#667eea',
   },
-  dateIcon: {
-    fontSize: 20,
-    marginRight: 12,
+  dayButtonToday: {
+    borderColor: '#f59e0b',
+    backgroundColor: '#fef3c7',
   },
-  dateTextContainer: {
-    flex: 1,
+  dayButtonPast: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+    opacity: 0.5,
   },
-  dateLabel: {
+  dayName: {
     fontSize: 12,
     color: '#64748b',
+    fontWeight: '600',
     marginBottom: 2,
-    fontWeight: '500',
   },
-  dateButtonText: {
+  dayNameSelected: {
+    color: '#ffffff',
+  },
+  dayNameToday: {
+    color: '#f59e0b',
+    fontWeight: 'bold',
+  },
+  dayNamePast: {
+    color: '#94a3b8',
+  },
+  dayNumber: {
     fontSize: 16,
     color: '#1a202c',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
-  datePickerContainer: {
-    backgroundColor: '#f7fafc',
-    borderRadius: 15,
-    padding: 10,
+  dayNumberSelected: {
+    color: '#ffffff',
+  },
+  dayNumberToday: {
+    color: '#f59e0b',
+  },
+  dayNumberPast: {
+    color: '#94a3b8',
+  },
+  selectedContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
   },
-  shiftsContainer: {
-    marginTop: 10,
-  },
-  shiftsTitle: {
-    fontSize: 16,
+  selectedTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#1a202c',
     marginBottom: 15,
   },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: 30,
+  selectedList: {
+    gap: 10,
   },
-  loadingText: {
-    marginTop: 10,
-    color: '#64748b',
-    fontSize: 14,
-  },
-  shiftsGrid: {
-    gap: 12,
-  },
-  shiftCard: {
+  selectedItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f0f9ff',
     borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: '#e2e8f0',
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
   },
-  shiftCardSelected: {
-    backgroundColor: '#eef2ff',
-    borderColor: '#667eea',
-  },
-  shiftCardContent: {
+  selectedItemContent: {
     flex: 1,
   },
-  shiftName: {
+  selectedItemText: {
     fontSize: 15,
-    fontWeight: '600',
     color: '#1a202c',
-    marginBottom: 4,
+    fontWeight: '500',
   },
-  shiftNameSelected: {
-    color: '#667eea',
-  },
-  shiftTime: {
-    fontSize: 13,
-    color: '#64748b',
-  },
-  shiftTimeSelected: {
-    color: '#667eea',
-  },
-  shiftCheckbox: {
+  removeSelectedButton: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#cbd5e0',
+    backgroundColor: '#fee2e2',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  shiftCheckboxSelected: {
-    backgroundColor: '#667eea',
-    borderColor: '#667eea',
-  },
-  checkmark: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  addButton: {
-    backgroundColor: '#ffffff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 30,
-    borderWidth: 2,
-    borderColor: '#e2e8f0',
-    borderStyle: 'dashed',
-  },
-  addButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addIcon: {
-    fontSize: 20,
-    color: '#667eea',
-    marginRight: 8,
-    fontWeight: 'bold',
-  },
-  addButtonText: {
+  removeSelectedText: {
+    color: '#dc2626',
     fontSize: 16,
-    color: '#667eea',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   submitContainer: {
     marginTop: 10,
@@ -595,7 +593,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   submitButtonDisabled: {
-    backgroundColor: '#a5b4fc',
+    backgroundColor: '#cbd5e0',
     shadowOpacity: 0.1,
   },
   submitButtonContent: {

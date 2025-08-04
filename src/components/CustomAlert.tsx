@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity, PanResponder } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context'; // Import useSafeAreaInsets
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
@@ -13,13 +13,17 @@ interface CustomAlertProps {
 }
 
 const CustomAlert: React.FC<CustomAlertProps> = ({ message, type, isVisible, onClose }) => {
-  const insets = useSafeAreaInsets(); // Get safe area insets
+  const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-100)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current; // For a subtle pop effect
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const translateXAnim = useRef(new Animated.Value(0)).current; // For swipe animation
 
   useEffect(() => {
     if (isVisible) {
+      // Reset swipe position when showing
+      translateXAnim.setValue(0);
+      
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -28,11 +32,11 @@ const CustomAlert: React.FC<CustomAlertProps> = ({ message, type, isVisible, onC
         }),
         Animated.spring(slideAnim, {
           toValue: 0,
-          damping: 10, // Controls oscillations
-          stiffness: 100, // Controls speed
+          damping: 10,
+          stiffness: 100,
           useNativeDriver: true,
         }),
-        Animated.spring(scaleAnim, { // Scale in
+        Animated.spring(scaleAnim, {
           toValue: 1,
           damping: 10,
           stiffness: 100,
@@ -47,13 +51,11 @@ const CustomAlert: React.FC<CustomAlertProps> = ({ message, type, isVisible, onC
         }
       });
     } else {
-      // Hide animation when isVisible becomes false externally
       hideAlert();
     }
-  }, [isVisible]); // Removed fadeAnim, slideAnim, scaleAnim from dependency array to prevent unnecessary re-runs
+  }, [isVisible]);
 
   const hideAlert = () => {
-    // Hide animation: Slide out, fade out, and subtly scale down
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
@@ -71,28 +73,78 @@ const CustomAlert: React.FC<CustomAlertProps> = ({ message, type, isVisible, onC
         useNativeDriver: true,
       }),
     ]).start(() => {
-      onClose(); // Call onClose after animation completes to fully unmount
+      onClose();
     });
   };
 
-  // Only render if `isVisible` is true or if `fadeAnim` is still animating out.
-  // This prevents flickering when the component unmounts quickly.
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Chỉ bắt đầu pan khi vuốt ngang đủ xa
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onPanResponderGrant: () => {
+        // Đặt offset để animation mượt hơn
+        translateXAnim.setOffset(translateXAnim._value);
+        translateXAnim.setValue(0);
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Cập nhật vị trí theo cử chỉ vuốt
+        translateXAnim.setValue(gestureState.dx);
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        // Xóa offset
+        translateXAnim.flattenOffset();
+        
+        const { dx, vx } = gestureState;
+        
+        // Nếu vuốt đủ xa (> 100px) hoặc vuốt nhanh (velocity > 0.5)
+        if (Math.abs(dx) > 100 || Math.abs(vx) > 0.5) {
+          // Animate slide out theo hướng vuốt
+          const toValue = dx > 0 ? width : -width;
+          Animated.parallel([
+            Animated.timing(translateXAnim, {
+              toValue,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(fadeAnim, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            onClose();
+          });
+        } else {
+          // Trở về vị trí ban đầu
+          Animated.spring(translateXAnim, {
+            toValue: 0,
+            damping: 15,
+            stiffness: 150,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
   if (!isVisible && fadeAnim.__getValue() === 0 && slideAnim.__getValue() === -100 && scaleAnim.__getValue() === 0.9) {
     return null;
   }
 
   const alertColors = {
     success: {
-      background: '#e6ffed', // Lighter green
-      border: '#6fcf97',     // A bit darker border for definition
-      icon: '#27ae60',       // Vibrant green for icon
-      text: '#218838',       // Darker green for text
+      background: '#e6ffed',
+      border: '#6fcf97',
+      icon: '#27ae60',
+      text: '#218838',
     },
     error: {
-      background: '#ffe6e6', // Lighter red
-      border: '#eb5757',     // A bit darker border for definition
-      icon: '#eb5757',       // Vibrant red for icon
-      text: '#c0392b',       // Darker red for text
+      background: '#ffe6e6',
+      border: '#eb5757',
+      icon: '#eb5757',
+      text: '#c0392b',
     },
   };
 
@@ -101,21 +153,26 @@ const CustomAlert: React.FC<CustomAlertProps> = ({ message, type, isVisible, onC
 
   return (
     <Animated.View
+      {...panResponder.panHandlers}
       style={[
         styles.alertContainer,
         {
           backgroundColor: currentColors.background,
           borderColor: currentColors.border,
-          top: insets.top + 10, // Position based on safe area
+          top: insets.top + 10,
           opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
+          transform: [
+            { translateY: slideAnim }, 
+            { scale: scaleAnim },
+            { translateX: translateXAnim }
+          ],
         },
       ]}
     >
       <Ionicons name={iconName} size={26} color={currentColors.icon} style={styles.alertIcon} />
       <Text style={[styles.alertText, { color: currentColors.text }]}>{message}</Text>
       <TouchableOpacity onPress={hideAlert} style={styles.closeButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <Ionicons name="close" size={22} color={currentColors.text} />
+        {/* <Ionicons name="close" size={22} color={currentColors.text} /> */}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -129,14 +186,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: 10, // Slightly more rounded corners
+    borderRadius: 10,
     borderWidth: 1,
     zIndex: 9999,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 }, // More pronounced shadow
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 8, // Increased elevation for Android shadow
+    elevation: 8,
   },
   alertIcon: {
     marginRight: 12,

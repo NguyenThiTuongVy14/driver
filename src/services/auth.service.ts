@@ -20,6 +20,27 @@ export async function login(username: string, password: string, role=2) {
   }
 }
 
+
+export async function register(data: FormData) {
+  try {
+    console.log(11111)
+    const response = await fetch('http://192.168.61.221:8080/api/register/driver', {
+      method: 'POST',
+      body: data,
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    console.log(response)
+    return response
+
+  } catch (error: any) {
+    console.error('API Error:', error.message || error);
+  }
+}
+
+
+
 export async function forgotPassword(username: string) {
   try {
     
@@ -47,6 +68,7 @@ export async function resetPassword(username: string, otp:string, newPassword: s
     throw error.response?.data?.message || 'Lỗi reset pass';
   }
 }
+
 
 
 export async function logout() {

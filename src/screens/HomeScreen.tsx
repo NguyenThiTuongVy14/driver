@@ -8,7 +8,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import CustomAlert from '../components/CustomAlert';
 import axios from 'axios';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface WastePoint {
   id: number;
@@ -32,7 +32,6 @@ interface RouteCache {
 
 const RADIUS_EARTH = 6371e3; // Earth radius in meters
 
-
 async function fetchRoute(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
   const apiKey = '5b3ce3597851110001cf6248fed2cd4609bf4466add139b1d39b785d';
   const response = await axios.post(
@@ -53,8 +52,9 @@ async function fetchRoute(from: { lat: number; lng: number }, to: { lat: number;
 const HomeScreen = () => {
   const { colors } = useAppColors();
   const navigation = useNavigation();
-  const listHeight = useRef(new Animated.Value(150)).current;
+  const listHeight = useRef(new Animated.Value(180)).current;
   const animatedValue = useRef(new Animated.Value(100)).current;
+  const slideAnimation = useRef(new Animated.Value(0)).current;
 
   const [state, setState] = useState({
     tasks: [] as WastePoint[],
@@ -69,36 +69,6 @@ const HomeScreen = () => {
   });
 
   const updateState = (updates: Partial<typeof state>) => setState(prev => ({ ...prev, ...updates }));
-  async function getDistanceMatrixFromORS(points: WastePoint[]): Promise<number[][]> {
-    const coordinates = points.map(p => [p.longitude, p.latitude]); // ORS dùng [lng, lat]
-
-    const body = {
-      locations: coordinates,
-      metrics: ['distance'],
-      units: 'km',
-    };
-
-    try {
-      const response = await fetch('https://api.openrouteservice.org/v2/matrix/driving-car', {
-        method: 'POST',
-        headers: {
-          'Authorization': '5b3ce3597851110001cf6248fed2cd4609bf4466add139b1d39b785d',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        throw new Error('ORS API error');
-      }
-
-      const data = await response.json();
-      return data.distances;
-    } catch (err) {
-      console.error('❌ Lỗi khi gọi ORS:', err);
-      return [];
-    }
-  }
 
   const fetchTasksData = useCallback(async () => {
     try {
@@ -108,28 +78,13 @@ const HomeScreen = () => {
         idPosition: item.position.id,
         latitude: item.position.lat,
         longitude: item.position.lng,
-        status: 'PENDING',
+        status: item.status,
         address: item.position.address,
         name: item.position.name,
         image: item.position.image,
         id: item.position.id,
       }));
 
-      // const distanceMatrix = await getDistanceMatrixFromORS(mapped);
-      // if (!distanceMatrix || distanceMatrix.length !== mapped.length) {
-      //   updateState({
-      //     alert: {
-      //       show: true,
-      //       message: 'Không thể tạo ma trận khoảng cách',
-      //       type: 'error',
-      //     },
-      //   });
-      //   return mapped;
-      // }
-      // mapped.forEach((point, i) => {
-      //   console.log(`Từ ${point.name} đến các điểm khác:`);
-      //   console.log(distanceMatrix[i]);
-      // });
       const distanceMatrix: number[][] = [
         [0, 9.35, 5.23, 9.49, 3.89, 3.74],  // Bãi 3
         [9.09, 0, 13.61, 9.26, 6.17, 6.09], // Bãi 2
@@ -138,11 +93,8 @@ const HomeScreen = () => {
         [3.98, 5.61, 7.98, 9.61, 0, 1.76],  // Bãi 6
         [3.04, 6.09, 7.64, 8.46, 2.21, 0],     // Bãi 7
       ];
-      distanceMatrix.forEach((point, i) => {
-        // console.log(`Từ ${point.name} đến các điểm khác:`);
-        console.log(distanceMatrix[i]);
-      });
-      console.table(distanceMatrix)
+      
+      console.table(distanceMatrix);
       updateState({ tasks: mapped, distanceMatrix });
       return mapped;
     } catch (error) {
@@ -152,7 +104,6 @@ const HomeScreen = () => {
       return [];
     }
   }, []);
-
 
   const getCurrentLocation = useCallback(async () => {
     try {
@@ -177,24 +128,23 @@ const HomeScreen = () => {
     updateState({ isLoadingRoutes: true });
     const newCache: RouteCache = {};
 
-    await Promise.allSettled(
-      points.map(async (p) => {
-        try {
-          newCache[`route_${p.id}`] = {
-            coordinates: await fetchRoute(
-              { lat: currentLoc.latitude, lng: currentLoc.longitude },
-              { lat: p.latitude, lng: p.longitude }
-            ),
-            fromLocation: currentLoc,
-            timestamp: Date.now(),
-          };
-        } catch { }
-      })
-    );
+    // await Promise.allSettled(
+    //   points.map(async (p) => {
+    //     try {
+    //       newCache[`route_${p.id}`] = {
+    //         coordinates: await fetchRoute(
+    //           { lat: currentLoc.latitude, lng: currentLoc.longitude },
+    //           { lat: p.latitude, lng: p.longitude }
+    //         ),
+    //         fromLocation: currentLoc,
+    //         timestamp: Date.now(),
+    //       };
+    //     } catch { }
+    //   })
+    // );
 
     updateState({ routeCache: newCache, isLoadingRoutes: false });
   };
-
 
   useFocusEffect(useCallback(() => {
     updateState({ loading: true, selectedPoint: null });
@@ -206,27 +156,158 @@ const HomeScreen = () => {
     })();
   }, [fetchTasksData, getCurrentLocation]));
 
-
   const handleSelectPoint = (p: WastePoint) => {
     updateState({ selectedPoint: p });
     if (!state.isListExpanded) toggleList();
   };
 
   const toggleList = () => {
-    Animated.spring(listHeight, {
-      toValue: state.isListExpanded ? 150 : SCREEN_HEIGHT * 0.6,
-      useNativeDriver: false,
-    }).start();
+    const targetHeight = state.isListExpanded ? 150 : SCREEN_HEIGHT * 0.48;
+    
+    Animated.parallel([
+      Animated.spring(listHeight, {
+        toValue: targetHeight,
+        useNativeDriver: false,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.timing(slideAnimation, {
+        toValue: state.isListExpanded ? 0 : 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
     updateState({ isListExpanded: !state.isListExpanded });
   };
 
   const getRouteCoordinates = (id: number) => state.routeCache[`route_${id}`]?.coordinates || [];
+  
   const getPointColor = (status: string) => ({
     PENDING: colors.primary,
     LATE: colors.danger,
     COMPLETED: colors.success,
-    ACTIVE: colors.primary,
+    PROCESSING: colors.primary,
   }[status] || colors.subText);
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'PENDING': return '⏳';
+      case 'LATE': return '⚠️';
+      case 'COMPLETED': return '✅';
+      case 'PROCESSING': return '🔄';
+      default: return '📍';
+    }
+  };
+
+  const renderTaskItem = ({ item, index }: { item: WastePoint; index: number }) => {
+    const statusObj = getStatus(item.status);
+    const isSelected = state.selectedPoint?.id === item.id;
+    const hasRoute = getRouteCoordinates(item.id).length > 0;
+
+    return (
+      <Animated.View
+        style={[
+          styles.cardContainer,
+          {
+            transform: [{
+              translateX: slideAnimation.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 0],
+              })
+            }],
+            opacity: slideAnimation.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.7, 1],
+            })
+          }
+        ]}
+      >
+        <TouchableOpacity
+          style={[
+            styles.card,
+            {
+              backgroundColor: isSelected ? colors.primary + '15' : colors.background,
+              borderLeftColor: statusObj.color,
+              borderWidth: isSelected ? 2 : 0,
+              borderColor: isSelected ? colors.primary : 'transparent',
+              shadowColor: colors.primary,
+              shadowOpacity: isSelected ? 0.15 : 0.08,
+              // transform: [{ scale: isSelected ? 1.02 : 1 }],
+            },
+          ]}
+          onPress={() => handleSelectPoint(item)}
+          onLongPress={() => navigation.navigate('Direction', {
+            id_JobRotation: item.idRotation,
+            start: state.currentLocation,
+            destination: { latitude: item.latitude, longitude: item.longitude },
+            address: item.address
+          })}
+          activeOpacity={0.8}
+        >
+          <View style={styles.cardContent}>
+            <View style={styles.cardHeader}>
+              <View style={styles.titleRow}>
+                <Text style={[styles.cardIndex, { color: colors.subText }]}>
+                  #{(index + 1).toString().padStart(2, '0')}
+                </Text>
+                <Text style={[styles.pointName, { color: colors.text }]} numberOfLines={1}>
+                  {item.name}
+                </Text>
+              </View>
+              <View style={styles.statusContainer}>
+                {hasRoute && (
+                  <View style={[styles.routeBadge, { backgroundColor: colors.success + '20' }]}>
+                    <Text style={[styles.routeText, { color: colors.success }]}>🛣️</Text>
+                  </View>
+                )}
+                <View style={[styles.statusBadge, { backgroundColor: statusObj.color + '20' }]}>
+                  <Text style={styles.statusIcon}>{getStatusIcon(item.status)}</Text>
+                </View>
+              </View>
+            </View>
+
+            <Text style={[styles.address, { color: colors.subText }]} numberOfLines={2}>
+              📍 {item.address}
+            </Text>
+
+            <View style={styles.cardFooter}>
+              <View style={styles.statusRow}>
+                {item.idPosition == 999 || item.idPosition == 1000
+                  ?<Text style={[styles.statusText, { color: statusObj.color }]}>
+                    {item.idPosition == 999 ? "Điểm xuất phát" : "Điểm cuối"}
+                  </Text>
+
+                  :<Text style={[styles.statusText, { color: statusObj.color }]}>
+                    {statusObj.label}
+                  </Text>
+                }
+              </View>
+              {isSelected && (
+                <Text style={[styles.actionHint, { color: colors.primary }]}>
+                  Nhấn giữ để điều hướng →
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {isSelected && (
+            <View style={[styles.selectedIndicator, { backgroundColor: colors.primary }]} />
+          )}
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <Text style={[styles.emptyIcon, { color: colors.subText }]}>📋</Text>
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>Chưa có công việc</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.subText }]}>
+        Danh sách công việc sẽ xuất hiện ở đây
+      </Text>
+    </View>
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -240,60 +321,76 @@ const HomeScreen = () => {
         currentLocationIcon="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTyzTWQoCUbRNdiyorem5Qp1zYYhpliR9q0Bw&s"
         routeCoordinates={state.selectedPoint ? getRouteCoordinates(state.selectedPoint.id) : []}
       />
+
       {state.alert.show && (
-        <CustomAlert message={state.alert.message} type={state.alert.type} isVisible={state.alert.show} onClose={() => updateState({ alert: { ...state.alert, show: false } })} />
+        <CustomAlert 
+          message={state.alert.message} 
+          type={state.alert.type} 
+          isVisible={state.alert.show} 
+          onClose={() => updateState({ alert: { ...state.alert, show: false } })} 
+        />
       )}
-      <Animated.View style={[styles.taskListContainer, { backgroundColor: colors.card, height: listHeight }]}>
-        <TouchableOpacity style={styles.headerContainer} onPress={toggleList} activeOpacity={0.7}>
-          <View style={styles.handleBar} />
+
+      <Animated.View style={[
+        styles.taskListContainer, 
+        { 
+          backgroundColor: colors.card, 
+          height: listHeight,
+          shadowColor: colors.text,
+        }
+      ]}>
+        <TouchableOpacity 
+          style={styles.headerContainer} 
+          onPress={toggleList} 
+          activeOpacity={0.7}
+        >
+          <View style={[styles.handleBar, { backgroundColor: colors.subText + '40' }]} />
           <View style={styles.headerContent}>
-            <Text style={[styles.title, { color: colors.text }]}>
-              📋 Các điểm thu gom ({state.tasks.length})
-              {state.isLoadingRoutes && ' (Đang tải routes...)'}
-            </Text>
-            <Text style={[styles.toggleIcon, { color: colors.subText }]}>{state.isListExpanded ? '⌄' : '⌃'}</Text>
+            <View style={styles.headerLeft}>
+              <Text style={[styles.title, { color: colors.text }]}>
+                Điểm thu gom
+              </Text>
+              <View style={[styles.countBadge, { backgroundColor: colors.primary + '10' }]}>
+                <Text style={[styles.countText, { color: colors.primary }]}>
+                  {state.tasks.length}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.headerRight}>
+              {state.isLoadingRoutes && (
+                <View style={styles.loadingBadge}>
+                  <Text style={[styles.loadingText, { color: colors.primary }]}>⏳</Text>
+                </View>
+              )}
+              <Text style={[styles.toggleIcon, { color: colors.subText }]}>
+                {state.isListExpanded ? '⌄' : '⌃'}
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
 
         <View style={styles.listWrapper}>
           {state.loading ? (
-            <View style={styles.loadingContainer}><Text style={{ color: colors.subText }}>Đang tải dữ liệu...</Text></View>
+            <View style={styles.loadingContainer}>
+              <Text style={[styles.loadingIcon, { color: colors.primary }]}>⏳</Text>
+              <Text style={[styles.loadingTitle, { color: colors.text }]}>
+                Đang tải dữ liệu...
+              </Text>
+              <Text style={[styles.loadingSubtitle, { color: colors.subText }]}>
+                Vui lòng chờ trong giây lát
+              </Text>
+            </View>
           ) : (
             <FlatList
               data={state.tasks}
-              keyExtractor={(i) => i.id.toString()}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={renderTaskItem}
               showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => {
-                const statusObj = getStatus(item.status);
-                const isSelected = state.selectedPoint?.id === item.id;
-                return (
-                  <TouchableOpacity
-                    style={[
-                      styles.card,
-                      {
-                        backgroundColor: isSelected ? colors.primary + '20' : colors.background,
-                        borderLeftColor: statusObj.color,
-                        borderWidth: isSelected ? 1 : 0,
-                        borderColor: isSelected ? colors.primary : 'transparent',
-                      },
-                    ]}
-                    onPress={() => handleSelectPoint(item)}
-                    onLongPress={() => navigation.navigate('Direction', {
-                      id_JobRotation: item.idRotation,
-                      start: state.currentLocation,
-                      destination: { latitude: item.latitude, longitude: item.longitude },
-                    })}
-                  >
-                    <View style={styles.cardHeader}>
-                      <Text style={[styles.pointName, { color: colors.text }]}>{item.name}</Text>
-                      {getRouteCoordinates(item.id).length > 0 && <Text style={[styles.routeIndicator, { color: colors.success }]}>🗺️</Text>}
-                    </View>
-                    <Text style={[styles.address, { color: colors.subText }]}>#{item.id} - {item.address}</Text>
-                    <View style={styles.statusRow}><Text style={[styles.statusText, { color: statusObj.color }]}>{statusObj.label}</Text></View>
-                  </TouchableOpacity>
-                );
-              }}
               contentContainerStyle={styles.listContent}
+              ListEmptyComponent={renderEmptyState}
+              ItemSeparatorComponent={() => <View style={styles.separator} />}
+              bounces={true}
+              scrollEventThrottle={16}
             />
           )}
         </View>
@@ -303,23 +400,208 @@ const HomeScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  taskListContainer: { borderTopLeftRadius: 16, borderTopRightRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 },
-  headerContainer: { paddingVertical: 8, alignItems: 'center' },
-  handleBar: { width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, marginBottom: 8 },
-  headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 16 },
-  title: { fontSize: 16, fontWeight: '700', flex: 1 },
-  toggleIcon: { fontSize: 20, fontWeight: 'bold' },
-  listWrapper: { flex: 1, paddingHorizontal: 10, paddingBottom: 90 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContent: { paddingBottom: 20 },
-  card: { padding: 12, borderRadius: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, borderLeftWidth: 4, marginBottom: 6 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  pointName: { fontSize: 15, fontWeight: '700', flex: 1 },
-  routeIndicator: { fontSize: 12, fontWeight: '600' },
-  address: { fontSize: 13, fontWeight: '400', marginBottom: 6, lineHeight: 18 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statusText: { fontSize: 13, fontWeight: '500' },
+  container: { 
+    flex: 2,
+  },
+  taskListContainer: { 
+    borderTopLeftRadius: 24, 
+    borderTopRightRadius: 24, 
+    elevation: 8,
+  },
+  headerContainer: { 
+    paddingVertical: 12, 
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  handleBar: { 
+    width: 50, 
+    height: 5, 
+    borderRadius: 3, 
+    marginBottom: 12,
+  },
+  headerContent: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    width: '100%', 
+    paddingHorizontal: 20,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  title: { 
+    fontSize: 18, 
+    fontWeight: '800',
+    marginRight: 12,
+  },
+  countBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 24,
+  },
+  countText: {
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  loadingBadge: {
+    padding: 4,
+  },
+  loadingText: {
+    fontSize: 16,
+  },
+  toggleIcon: { 
+    fontSize: 24, 
+    fontWeight: 'bold',
+  },
+  listWrapper: { 
+    flex: 1, 
+    paddingHorizontal: 16, 
+    paddingBottom: 80,
+  },
+  loadingContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    // paddingVertical: 10,
+  },
+  loadingIcon: {
+    fontSize: 32,
+    marginBottom: 12,
+  },
+  loadingTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  loadingSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  listContent: { 
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  separator: {
+    height: 8,
+  },
+  cardContainer: {
+    marginBottom: 4,
+  },
+  card: { 
+    borderRadius: 16, 
+    elevation: 3, 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowRadius: 8,
+    borderLeftWidth: 4,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  cardContent: {
+    padding: 16,
+  },
+  cardHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start', 
+    marginBottom: 12,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  cardIndex: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 8,
+    minWidth: 24,
+  },
+  pointName: { 
+    fontSize: 16, 
+    fontWeight: '700',
+    flex: 1,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  routeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  routeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusIcon: {
+    fontSize: 14,
+  },
+  address: { 
+    fontSize: 14, 
+    fontWeight: '400', 
+    marginBottom: 12, 
+    lineHeight: 20,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statusRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center',
+  },
+  statusText: { 
+    fontSize: 14, 
+    fontWeight: '600',
+  },
+  actionHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  selectedIndicator: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 4,
+    height: '100%',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
 });
 
 export default HomeScreen;

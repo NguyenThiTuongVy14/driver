@@ -17,7 +17,6 @@ export const fcmService = {
         console.log('📢 Notification channel đã được tạo');
       }
 
-      // 👇 THÊM dòng sau để lắng nghe khi app đang mở
       fcmService.listenToForegroundNotifications();
 
     } catch (err) {
@@ -45,7 +44,9 @@ export const fcmService = {
     }
   },
 
-  // ✅ Lắng nghe thông báo foreground và hiển thị local notification
+
+  
+
   listenToForegroundNotifications() {
     messaging().onMessage(async remoteMessage => {
       console.log('📩 Foreground nhận thông báo:', remoteMessage);
@@ -63,3 +64,19 @@ export const fcmService = {
     });
   },
 };
+
+
+messaging().setBackgroundMessageHandler(async remoteMessage => {
+  console.log('📥 [Background] Nhận thông báo:', remoteMessage);
+
+  await notifee.displayNotification({
+    title: remoteMessage.notification?.title || 'Thông báo',
+    body: remoteMessage.notification?.body || 'Bạn có thông báo mới',
+    android: {
+      channelId: 'default',
+      pressAction: {
+        id: 'default',
+      },
+    },
+  });
+});
